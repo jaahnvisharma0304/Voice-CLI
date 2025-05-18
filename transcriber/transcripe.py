@@ -16,7 +16,7 @@ def transcribe_audio():
     BLOCK_SIZE = 8000  # Process audio in chunks
 
     # Load Vosk Model
-    model = vosk.Model(r"C:\Users\tanis\OneDrive\Desktop\os projecy\vosk-model-small-en-in-0.4")
+    model = vosk.Model(r"./vosk-model-small-en-in-0.4")
     recognizer = vosk.KaldiRecognizer(model, SAMPLE_RATE)
 
     # Create a queue to store audio data

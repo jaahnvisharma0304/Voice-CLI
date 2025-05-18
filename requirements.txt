@@ -1,0 +1,6 @@
+langchain
+langchain-google-genai
+python-dotenv
+sysv-ipc
+vosk
+sounddevice
