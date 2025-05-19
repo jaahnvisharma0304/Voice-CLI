@@ -1,0 +1,10 @@
+[
+    [
+        "mkdir",
+        "new"
+    ],
+    [
+        "touch",
+        "new/daughter.txt"
+    ]
+]
