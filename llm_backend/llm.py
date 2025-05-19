@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # pip install langchain langchain-google-genai python-dotenv sysv-ipc
 
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -6,11 +7,9 @@ from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 import json
 import os
-from pipe import pipe
-
+import ast
 load_dotenv()
 
-@pipe
 def llm(transcribed_text):
     model = ChatGoogleGenerativeAI(model="learnlm-2.0-flash-experimental")
 
@@ -76,13 +75,30 @@ def llm(transcribed_text):
     parser = StrOutputParser()
     chain = prompt1 | model | parser
     result = chain.invoke({"user_input": transcribed_text})
-    print("Generated:", result)
+    print("Generated response:", result)
 
-    # Write result to a temporary file
-    with open('command_output.txt', 'w') as f:
-        json.dump(result, f)
-    print("Command written to file.")
-    return result
+    # Handle special responses
+    if result.strip() in ["No command found", "Command unclear"]:
+        return result.strip()
+    
+    # Try to parse the result as a Python list
+    try:
+        # Convert the string representation of a list to an actual Python list
+        command_list = ast.literal_eval(result.strip())
+        
+        # Write result to a temporary file
+        with open('command_output.txt', 'w') as f:
+            json.dump(command_list, f)
+        print("Command written to file.")
+        
+        return command_list
+    except (SyntaxError, ValueError) as e:
+        print(f"Error parsing LLM output: {e}")
+        print(f"Raw output: {result}")
+        return "Command unclear"
 
 if __name__ == "__main__":
-    llm(input("How can this terminal assist you? \n"))
+    print("Terminal Command Generator")
+    user_input = input("How can this terminal assist you? \n")
+    result = llm(user_input)
+    print("\nFinal result:", result)
