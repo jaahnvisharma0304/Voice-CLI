@@ -41,7 +41,6 @@ def run_executor():
 
 if __name__ == "__main__":
     print("🔁 Voice-Controlled CLI Pipeline Starting...\n")
-    run_transcriber()
     transcription = run_transcriber()
     run_llm(transcription)
     run_writer()
