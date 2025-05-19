@@ -1,4 +1,10 @@
 [
-    "mkdir",
-    "thank"
+    [
+        "mkdir",
+        "high"
+    ],
+    [
+        "touch",
+        "high/hello"
+    ]
 ]

@@ -18,23 +18,19 @@ def run_transcriber():
         print(f"[!] Error reading transcription.txt: {e}")
         sys.exit(1)
 
-# Step 2: Pass transcription to LLM
 def run_llm(transcription):
     print("[*] Running LLM backend...")
     import llm_backend.llm as llm_module
     result = llm_module.llm(transcription)
     print("[+] LLM result:", result)
 
-    # Save to command_output.txt
     with open("shared_memory/command_output.txt", "w") as f:
         json.dump(result, f, indent=4)
 
-# Step 3: Write to shared memory
 def run_writer():
     print("[*] Writing to shared memory...")
     subprocess.run(["python", "shared_memory/writer.py"], check=True)
 
-# Step 4: Run C executor
 def run_executor():
     print("[*] Running C executor...")
     subprocess.run(["./executor/executor.out"], check=True)
