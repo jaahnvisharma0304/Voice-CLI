@@ -1,0 +1,1 @@
+mkdir -p big && sleep 1 && explorer.exe big && sleep 1 && touch big/meow.txt

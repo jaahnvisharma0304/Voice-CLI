@@ -8,6 +8,7 @@ from langchain_core.output_parsers import StrOutputParser
 import json
 import os
 import ast
+import re
 load_dotenv()
 
 def llm(transcribed_text):
@@ -16,59 +17,57 @@ def llm(transcribed_text):
     prompt1 = PromptTemplate(
         input_variables=["user_input"],
         template="""
-    You are a terminal command generator designed to assist in safely executing Linux commands based on natural language input from a user.
+    You are a terminal command generator that converts natural language instructions into safe and visible Linux bash commands, primarily for use in WSL (Windows Subsystem for Linux) or Linux environments.
 
-    Instructions:
+Your job is to generate commands that not only execute the user's request but also open relevant folders and files so the user can **visibly confirm the action**.
 
-    Carefully analyze the user input: {user_input}
+Instructions:
 
-    Your goal is to extract executable Linux terminal command(s) from the user's request.
+1. Carefully analyze the user input: {user_input}
 
-    Response Format:
-    - For a single command: Return exactly ["command", "arg1", "arg2", ...] as a Python list of strings.
-    - For multiple commands: Return exactly [["command1", "arg1", ...], ["command2", "arg1", ...], ...] as a nested Python list of strings.
+2. If the command involves a folder:
+   - Open the folder **first** using `explorer.exe <folder>` (Windows) or `xdg-open <folder>` (Linux).
+   - If **no folder is specified**, default to opening the current folder using:
+     - `explorer.exe .` (Windows)
+     - or `xdg-open .` (Linux)
 
-    Do NOT add any additional explanation or context.
-    Only return valid command(s) that a user could run directly in a bash terminal.
+3. For each action (create file, write text, open file), generate safe sequential commands with `sleep 1` in between for visibility.
 
-    Rules:
+4. Use the following tools:
+   - `mkdir -p` for creating folders
+   - `touch` or `echo` for creating/writing files
+   - `code`, `notepad.exe`, or `xdg-open` to open files
+   - `explorer.exe` to open folders in Windows
+   - `sleep 1` between steps
 
-    1. If the user's input does not include any command or action to be executed, respond with: No command found
-    2. If the user's request is vague or ambiguous and cannot be safely interpreted into specific command(s), respond with: Command unclear
-    3. Do NOT include sudo, rm -rf /, or any dangerous command. Ignore commands that might damage the system.
-    4. If the command can be interpreted in multiple ways, prefer the safest and most commonly used interpretation.
-    5. For file operations, interpret context correctly (e.g., "create a file inside a folder" should generate commands that create both the folder and the file).
-    6. For folder creation, use mkdir.
-    7. For file creation, use touch.
-    8. For sequential operations that logically require multiple commands, return a nested list of commands.
+5. Output format - ONLY return the raw JSON array, no markdown formatting:
+   - For a single command: ["command", "arg1", "arg2", ...]
+   - For multiple sequential commands: [["cmd1", ...], ["cmd2", ...], ...]
 
-    Your response should never contain anything except the command list(s) or the phrases mentioned above.
+6. Response Rules:
+   - If there's no actionable command, respond ONLY: No command found
+   - If the input is vague or risky (like "delete everything"), respond ONLY: Command unclear
+   - NEVER use sudo or destructive commands like `rm -rf`
+   - DO NOT wrap your response in markdown code blocks or any other formatting
 
-    Examples: 
+Examples:
 
-    Input: "Show me all files including hidden ones" 
-    Output: ["ls", "-la"]
+Input: "Create a folder in C drive called testfolder2, then create text.txt inside it with the content 'hello' and open it"
+Output:
+[["explorer.exe", "C:\\\\"], ["sleep", "1"], ["mkdir", "-p", "/mnt/c/testfolder2"], ["sleep", "1"], ["explorer.exe", "C:\\\\testfolder2"], ["sleep", "1"], ["echo", "hello", ">", "/mnt/c/testfolder2/text.txt"], ["sleep", "1"], ["code", "/mnt/c/testfolder2/text.txt"]]
 
-    Input: "Clear the screen" 
-    Output: ["clear"]
+Input: "Create a file called notes.txt in the current folder and open it"
+Output:
+[["explorer.exe", "."], ["sleep", "1"], ["touch", "notes.txt"], ["sleep", "1"], ["code", "notes.txt"]]
 
-    Input: "Can you launch firefox?" 
-    Output: ["firefox"]
+Input: "What's up?"
+Output: No command found
 
-    Input: "Create a folder named myfolder" 
-    Output: ["mkdir", "myfolder"]
+Input: "Remove everything"
+Output: Command unclear
 
-    Input: "Create a folder named myfolder and create a text file inside it called hello.txt" 
-    Output: [["mkdir", "myfolder"], ["touch", "myfolder/hello.txt"]]
+CRITICAL: Return ONLY the JSON array or special response. No markdown, no extra text, no formatting.
 
-    Input: "List all processes and save the output to processes.txt" 
-    Output: ["ps", "aux", ">", "processes.txt"]
-
-    Input: "Hey, what's up?" 
-    Output: No command found
-
-    Input: "Remove everything" 
-    Output: Command unclear
     """
     )
 
@@ -81,24 +80,68 @@ def llm(transcribed_text):
     if result.strip() in ["No command found", "Command unclear"]:
         return result.strip()
     
-    # Try to parse the result as a Python list
+    # Clean markdown formatting if present
+    cleaned_result = result.strip()
+    if cleaned_result.startswith('```'):
+        # Remove markdown code blocks
+        lines = cleaned_result.split('\n')
+        # Find the actual JSON content between ```
+        json_lines = []
+        in_code_block = False
+        for line in lines:
+            if line.strip().startswith('```'):
+                in_code_block = not in_code_block
+                continue
+            if in_code_block:
+                json_lines.append(line)
+        cleaned_result = '\n'.join(json_lines).strip()
+    
+    # Try to extract command array from response
     try:
-        # Convert the string representation of a list to an actual Python list
-        command_list = ast.literal_eval(result.strip())
+        # First, try to parse the result directly
+        command_list = ast.literal_eval(cleaned_result)
+    except (SyntaxError, ValueError):
+        # If direct parsing fails, try to extract the array from formatted response
+        try:
+            # Look for array pattern in the response
+            array_pattern = r'\[\s*\[.*?\]\s*(?:,\s*\[.*?\]\s*)*\]|\[.*?\]'
+            matches = re.findall(array_pattern, cleaned_result, re.DOTALL)
+            
+            if matches:
+                # Take the largest match (most likely the complete command array)
+                array_str = max(matches, key=len)
+                command_list = ast.literal_eval(array_str)
+            else:
+                raise ValueError("No valid array found in response")
+                
+        except (SyntaxError, ValueError) as e:
+            print(f"Error parsing LLM output: {e}")
+            print(f"Raw output: {result}")
+            print(f"Cleaned output: {cleaned_result}")
+            return "Command unclear"
+    
+    try:
+        # Ensure the shared_memory directory exists
+        os.makedirs('shared_memory', exist_ok=True)
         
-        # Write result to a temporary file
-        with open('command_output.txt', 'w') as f:
-            json.dump(command_list, f)
-        print("Command written to file.")
-        
-        return command_list
-    except (SyntaxError, ValueError) as e:
-        print(f"Error parsing LLM output: {e}")
-        print(f"Raw output: {result}")
-        return "Command unclear"
+        # Write the command list as JSON for the writer to read
+        with open('shared_memory/command_output.txt', 'w') as f:
+            json.dump(command_list, f, indent=2)
 
-if __name__ == "__main__":
-    print("Terminal Command Generator")
-    user_input = input("How can this terminal assist you? \n")
-    result = llm(user_input)
-    print("\nFinal result:", result)
+        print("Commands written to JSON file.")
+        
+        # Also generate the bash command string for display
+        if isinstance(command_list[0], list):
+            # Multiple commands, join with &&
+            command_str = ' && '.join([' '.join(cmd) for cmd in command_list])
+        else:
+            # Single command, just join the list
+            command_str = ' '.join(command_list)
+            
+        print(f"Command string: {command_str}")
+        return command_list  # Return the list for JSON serialization
+
+    except (IndexError, TypeError) as e:
+        print(f"Error processing command list: {e}")
+        print(f"Parsed command_list: {command_list}")
+        return "Command unclear"

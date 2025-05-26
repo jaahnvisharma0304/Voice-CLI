@@ -1,1 +1,1 @@
-inside the folder high create hello
+Make a folder Hello and inside which make a text file Hello.txt

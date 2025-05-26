@@ -1,1 +1,0 @@
-[["mkdir", "high"], ["touch", "high/hello"]]

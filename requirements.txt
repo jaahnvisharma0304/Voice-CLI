@@ -4,3 +4,8 @@ python-dotenv
 sysv-ipc
 vosk
 sounddevice
+sounddevice
+numpy
+whisper
+pynput
+torch
